@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3001;
 const isElectron = !!process.env.ELECTRON;
 
 app.use(cors({
-  origin: isElectron ? '*' : ['http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: true,
   credentials: true
 }));
 app.use(express.json());
@@ -50,7 +50,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, error: 'Erro interno do servidor' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Servidor rodando em http://localhost:${PORT}`);
   console.log(`📦 Painel de Controle de Pallets - API\n`);
 });

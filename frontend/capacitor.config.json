@@ -1,0 +1,12 @@
+{
+  "appId": "com.palletcontrol.app",
+  "appName": "PalletControl",
+  "webDir": "dist",
+  "server": {
+    "cleartext": true,
+    "allowNavigation": ["*"]
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
