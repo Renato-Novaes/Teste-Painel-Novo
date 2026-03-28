@@ -1,0 +1,61 @@
+{
+  "name": "pallet-control-system",
+  "version": "1.0.0",
+  "description": "Sistema de Controle de Estoque de Pallets",
+  "main": "electron/main.js",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm run dev\"",
+    "start": "concurrently \"cd backend && npm start\" \"cd frontend && npm run preview\"",
+    "build:frontend": "cd frontend && npm run build",
+    "electron:dev": "npm run build:frontend && electron .",
+    "electron:build": "npm run build:frontend && electron-builder --linux",
+    "electron:build:win": "npm run build:frontend && electron-builder --win",
+    "electron:build:mac": "npm run build:frontend && electron-builder --mac",
+    "electron:build:all": "npm run build:frontend && electron-builder --linux --win"
+  },
+  "build": {
+    "appId": "com.palletcontrol.app",
+    "productName": "PalletControl",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/src/**/*",
+      "backend/package.json",
+      "backend/node_modules/**/*",
+      "backend/.env"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      }
+    ],
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Office",
+      "icon": "electron/icons"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "electron/icons/icon.ico"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "electron/icons/icon.icns"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "electron/icons/icon.ico",
+      "uninstallerIcon": "electron/icons/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1"
+  }
+}
