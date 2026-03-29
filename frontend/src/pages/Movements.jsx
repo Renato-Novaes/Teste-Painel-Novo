@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Plus, Search, Filter, Edit2, Trash2, X, ChevronLeft, ChevronRight, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Filter, Edit2, Trash2, X, ChevronLeft, ChevronRight, Save, AlertCircle, CheckCircle2, Download, Clock, FileText } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +21,51 @@ function Toast({ msg, type, onClose }) {
   );
 }
 
+function AuditModal({ movementId, onClose }) {
+  const [audits, setAudits] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/api/movements/${movementId}/audit`)
+      .then(r => setAudits(r.data.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [movementId]);
+
+  const actionLabels = { created: 'Criação', updated: 'Edição', deleted: 'Exclusão' };
+  const actionColors = { created: 'text-emerald-400', updated: 'text-blue-400', deleted: 'text-red-400' };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden animate-fadeIn border border-slate-700/60">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700/40">
+          <h2 className="text-base font-bold text-slate-100 flex items-center gap-2"><Clock size={16} /> Histórico de Alterações</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-700"><X size={18} /></button>
+        </div>
+        <div className="overflow-y-auto max-h-[60vh] p-6">
+          {loading ? (
+            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : audits.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-8">Nenhum histórico encontrado</p>
+          ) : (
+            <div className="space-y-4">
+              {audits.map(a => (
+                <div key={a.id} className="border border-slate-700/30 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-sm font-semibold ${actionColors[a.action] || 'text-slate-300'}`}>{actionLabels[a.action] || a.action}</span>
+                    <span className="text-xs text-slate-500">{a.changed_at ? format(new Date(a.changed_at), 'dd/MM/yyyy HH:mm') : ''}</span>
+                  </div>
+                  <p className="text-xs text-slate-400">Por: <span className="font-medium text-slate-300">{a.changed_by_name || 'Sistema'}</span></p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MovementModal({ movement, onClose, onSaved, currentStock }) {
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({
@@ -35,8 +80,18 @@ function MovementModal({ movement, onClose, onSaved, currentStock }) {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [counterparts, setCounterparts] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  useEffect(() => {
+    api.get('/api/movements/counterparts/list').then(r => setCounterparts(r.data.data || [])).catch(() => {});
+  }, []);
 
   function handleChange(field, value) { setForm(f => ({ ...f, [field]: value })); }
+
+  const filteredCounterparts = counterparts.filter(c =>
+    c.toLowerCase().includes((form.counterpart || '').toLowerCase()) && c !== form.counterpart
+  ).slice(0, 5);
 
   const totalValue = (parseFloat(form.quantity) || 0) * (parseFloat(form.unit_price) || 0);
   const totalWithFreight = totalValue + (parseFloat(form.freight_value) || 0);
@@ -48,6 +103,7 @@ function MovementModal({ movement, onClose, onSaved, currentStock }) {
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
+    if (parseInt(form.quantity) <= 0) { setError('Quantidade deve ser maior que zero'); return; }
     setLoading(true);
     try {
       const payload = {
@@ -128,10 +184,23 @@ function MovementModal({ movement, onClose, onSaved, currentStock }) {
             </div>
           </div>
 
-          <div>
+          <div className="relative">
             <label className="block text-sm font-medium text-slate-300 mb-1">{form.movement_type === 'entry' ? 'Fornecedor *' : 'Cliente *'}</label>
-            <input type="text" value={form.counterpart} onChange={e => handleChange('counterpart', e.target.value)} className="input-field"
+            <input type="text" value={form.counterpart}
+              onChange={e => { handleChange('counterpart', e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+              className="input-field"
               placeholder={form.movement_type === 'entry' ? 'Nome do fornecedor' : 'Nome do cliente'} required />
+            {showSuggestions && filteredCounterparts.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-lg overflow-hidden">
+                {filteredCounterparts.map(c => (
+                  <button key={c} type="button"
+                    onMouseDown={() => { handleChange('counterpart', c); setShowSuggestions(false); }}
+                    className="block w-full text-left px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 transition-colors">{c}</button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -204,6 +273,7 @@ function ConfirmModal({ message, onConfirm, onCancel, loading }) {
 export default function Movements() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const canOperate = user?.role === 'admin' || user?.role === 'operator';
   const [movements, setMovements] = useState([]);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 20, totalPages: 1 });
   const [loading, setLoading] = useState(true);
@@ -214,6 +284,8 @@ export default function Movements() {
   const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null });
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [toast, setToast] = useState(null);
+  const [auditModal, setAuditModal] = useState({ open: false, id: null });
+  const [exporting, setExporting] = useState(false);
 
   const fetchMovements = useCallback(async (page = 1) => {
     setLoading(true);
@@ -251,6 +323,23 @@ export default function Movements() {
     fetchMovements(pagination.page); fetchStock();
   }
 
+  async function handleExportCSV() {
+    setExporting(true);
+    try {
+      const params = { ...filters };
+      Object.keys(params).forEach(k => !params[k] && delete params[k]);
+      const res = await api.get('/api/movements/export/csv', { params, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `movimentacoes_${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      showToast('Exportação concluída!');
+    } catch { showToast('Erro ao exportar', 'error'); }
+    finally { setExporting(false); }
+  }
+
   const activeFiltersCount = Object.values(filters).filter(Boolean).length;
 
   return (
@@ -258,13 +347,18 @@ export default function Movements() {
       {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       {modal.open && <MovementModal movement={modal.movement} onClose={() => setModal({ open: false, movement: null })} onSaved={handleSaved} currentStock={currentStock} />}
       {confirmDelete.open && <ConfirmModal message="Tem certeza que deseja excluir esta movimentação? Esta ação não pode ser desfeita." onConfirm={handleDelete} onCancel={() => setConfirmDelete({ open: false, id: null })} loading={deleteLoading} />}
+      {auditModal.open && <AuditModal movementId={auditModal.id} onClose={() => setAuditModal({ open: false, id: null })} />}
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-100">Movimentações</h2>
           <p className="text-sm text-slate-500">{pagination.total} registros encontrados</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={handleExportCSV} disabled={exporting} className="btn-secondary" title="Exportar CSV">
+            {exporting ? <div className="w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" /> : <Download size={15} />}
+            <span className="hidden sm:inline">Exportar</span>
+          </button>
           <button onClick={() => setShowFilters(!showFilters)}
             className={`btn-secondary relative ${activeFiltersCount > 0 ? 'ring-2 ring-blue-500' : ''}`}>
             <Filter size={15} />Filtros
@@ -272,7 +366,7 @@ export default function Movements() {
               <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-blue-600 text-white text-xs rounded-full flex items-center justify-center font-bold">{activeFiltersCount}</span>
             )}
           </button>
-          {isAdmin && (
+          {canOperate && (
             <button onClick={() => setModal({ open: true, movement: null })} className="btn-primary"><Plus size={15} />Nova Movimentação</button>
           )}
         </div>
@@ -331,19 +425,33 @@ export default function Movements() {
                 <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Total</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden md:table-cell">Parceiro</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Data</th>
-                {isAdmin && <th className="px-4 py-3"></th>}
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide hidden lg:table-cell">Por</th>
+                {canOperate && <th className="px-4 py-3"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-700/30">
               {loading ? (
-                <tr><td colSpan="9" className="text-center py-12 text-slate-500">
+                <tr><td colSpan="10" className="text-center py-12 text-slate-500">
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />Carregando...
                   </div>
                 </td></tr>
               ) : movements.length === 0 ? (
-                <tr><td colSpan="9" className="text-center py-12 text-slate-500">
-                  <div className="flex flex-col items-center gap-2"><Filter size={32} className="text-slate-600" /><p>Nenhuma movimentação encontrada</p></div>
+                <tr><td colSpan="10" className="text-center py-12 text-slate-500">
+                  <div className="flex flex-col items-center gap-3">
+                    <FileText size={36} className="text-slate-600" />
+                    <div>
+                      <p className="font-medium text-slate-400">Nenhuma movimentação encontrada</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {activeFiltersCount > 0 ? 'Tente ajustar os filtros' : 'Registre sua primeira entrada ou saída de pallets'}
+                      </p>
+                    </div>
+                    {canOperate && activeFiltersCount === 0 && (
+                      <button onClick={() => setModal({ open: true, movement: null })} className="btn-primary mt-2">
+                        <Plus size={15} /> Registrar Primeira Movimentação
+                      </button>
+                    )}
+                  </div>
                 </td></tr>
               ) : (
                 movements.map(m => (
@@ -362,11 +470,17 @@ export default function Movements() {
                     <td className={`px-4 py-3 text-right font-semibold ${m.movement_type === 'entry' ? 'text-red-400' : 'text-emerald-400'}`}>{fmt(m.quantity * m.unit_price)}</td>
                     <td className="px-4 py-3 text-slate-400 max-w-[140px] truncate hidden md:table-cell" title={m.counterpart}>{m.counterpart}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{format(parseISO(m.movement_date), 'dd/MM/yyyy')}</td>
-                    {isAdmin && (
+                    <td className="px-4 py-3 text-slate-500 text-xs hidden lg:table-cell truncate max-w-[100px]" title={m.created_by_name}>{m.created_by_name || '—'}</td>
+                    {canOperate && (
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setModal({ open: true, movement: m })} className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Editar"><Edit2 size={14} /></button>
-                          <button onClick={() => setConfirmDelete({ open: true, id: m.id })} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Excluir"><Trash2 size={14} /></button>
+                          <button onClick={() => setAuditModal({ open: true, id: m.id })} className="p-1.5 text-slate-500 hover:text-slate-300 hover:bg-slate-700/50 rounded-lg transition-colors" title="Histórico"><Clock size={14} /></button>
+                          {isAdmin && (
+                            <>
+                              <button onClick={() => setModal({ open: true, movement: m })} className="p-1.5 text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors" title="Editar"><Edit2 size={14} /></button>
+                              <button onClick={() => setConfirmDelete({ open: true, id: m.id })} className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Excluir"><Trash2 size={14} /></button>
+                            </>
+                          )}
                         </div>
                       </td>
                     )}

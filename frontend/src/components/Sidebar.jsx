@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, PackageSearch, ArrowLeftRight,
-  TrendingUp, Truck, LogOut, X, Package2, ShieldCheck
+  TrendingUp, Truck, LogOut, X, Package2, ShieldCheck, Users
 } from 'lucide-react';
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/estoque',       label: 'Estoque',          icon: PackageSearch },
   { to: '/financeiro',    label: 'Financeiro',       icon: TrendingUp },
   { to: '/frete',         label: 'Frete',            icon: Truck },
+  { to: '/usuarios',      label: 'Usuários',         icon: Users, adminOnly: true },
 ];
 
 export default function Sidebar({ open, onClose }) {
@@ -43,7 +44,7 @@ export default function Sidebar({ open, onClose }) {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ to, label, icon: Icon, end }) => (
+        {navItems.filter(item => !item.adminOnly || user?.role === 'admin').map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -93,8 +94,8 @@ export default function Sidebar({ open, onClose }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-white truncate">{user?.name}</p>
             <div className="flex items-center gap-1">
-              <ShieldCheck size={11} className={user?.role === 'admin' ? 'text-blue-400' : 'text-slate-500'} />
-              <p className="text-xs text-slate-400 capitalize">{user?.role === 'admin' ? 'Administrador' : 'Usuário'}</p>
+              <ShieldCheck size={11} className={user?.role === 'admin' ? 'text-blue-400' : user?.role === 'operator' ? 'text-emerald-500' : 'text-slate-500'} />
+              <p className="text-xs text-slate-400 capitalize">{user?.role === 'admin' ? 'Administrador' : user?.role === 'operator' ? 'Operador' : 'Visualizador'}</p>
             </div>
           </div>
         </div>

@@ -24,4 +24,11 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, requireAdmin };
+function requireOperator(req, res, next) {
+  if (req.user.role !== 'admin' && req.user.role !== 'operator') {
+    return res.status(403).json({ success: false, error: 'Acesso negado. Permissão de operador necessária.' });
+  }
+  next();
+}
+
+module.exports = { authenticate, requireAdmin, requireOperator };

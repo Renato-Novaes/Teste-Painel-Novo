@@ -13,7 +13,7 @@ export default function UpdateModal({ updateInfo, onDismiss }) {
     try {
       setStatus('downloading');
       setProgress(0);
-      await downloadAndInstall(updateInfo.downloadUrl, (pct) => setProgress(pct));
+      await downloadAndInstall(updateInfo, (pct) => setProgress(pct));
       setStatus('installing');
     } catch (e) {
       setError(e.message || 'Erro ao baixar atualização');

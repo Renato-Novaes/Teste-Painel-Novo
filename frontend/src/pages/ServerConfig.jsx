@@ -95,9 +95,8 @@ export default function ServerConfig({ onConnected }) {
         <div className="mt-6 card p-4">
           <p className="text-xs font-semibold text-slate-400 mb-2">Como encontrar o IP:</p>
           <ol className="text-xs text-slate-500 space-y-1 list-decimal list-inside">
-            <li>No PC com o servidor, abra o terminal</li>
-            <li>Windows: digite <code className="text-slate-400 bg-slate-800 px-1 rounded">ipconfig</code></li>
-            <li>Linux/Mac: digite <code className="text-slate-400 bg-slate-800 px-1 rounded">hostname -I</code></li>
+            <li>No PC com o servidor, abra o Prompt de Comando</li>
+            <li>Digite <code className="text-slate-400 bg-slate-800 px-1 rounded">ipconfig</code></li>
             <li>Use o IPv4 da sua rede Wi-Fi + porta 3001</li>
           </ol>
         </div>

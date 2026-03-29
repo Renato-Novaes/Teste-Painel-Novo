@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../database/database');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireOperator } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -68,7 +68,7 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/movements - create movement
-router.post('/', requireAdmin, (req, res) => {
+router.post('/', requireOperator, (req, res) => {
   const { movement_type, pallet_type, quantity, unit_price, freight_value = 0, counterpart, notes, movement_date } = req.body;
 
   if (!movement_type || !pallet_type || !quantity || !counterpart || !movement_date) {
@@ -102,6 +102,11 @@ router.post('/', requireAdmin, (req, res) => {
   `).run(movement_type, pallet_type, parseInt(quantity), parseFloat(unit_price) || 0, parseFloat(freight_value) || 0, counterpart.trim(), notes || null, movement_date, req.user.id);
 
   const newMovement = db.prepare('SELECT * FROM movements WHERE id = ?').get(result.lastInsertRowid);
+
+  // Audit trail
+  db.prepare('INSERT INTO movement_audit (movement_id, action, new_data, changed_by) VALUES (?, ?, ?, ?)')
+    .run(newMovement.id, 'created', JSON.stringify(newMovement), req.user.id);
+
   res.status(201).json({ success: true, data: newMovement, message: 'Movimentação registrada com sucesso' });
 });
 
@@ -142,6 +147,11 @@ router.put('/:id', requireAdmin, (req, res) => {
   `).run(movement_type, pallet_type, parseInt(quantity), parseFloat(unit_price) || 0, parseFloat(freight_value) || 0, counterpart.trim(), notes || null, movement_date, id);
 
   const updated = db.prepare('SELECT * FROM movements WHERE id = ?').get(id);
+
+  // Audit trail
+  db.prepare('INSERT INTO movement_audit (movement_id, action, old_data, new_data, changed_by) VALUES (?, ?, ?, ?, ?)')
+    .run(id, 'updated', JSON.stringify(existing), JSON.stringify(updated), req.user.id);
+
   res.json({ success: true, data: updated, message: 'Movimentação atualizada com sucesso' });
 });
 
@@ -151,8 +161,71 @@ router.delete('/:id', requireAdmin, (req, res) => {
   const existing = db.prepare('SELECT * FROM movements WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ success: false, error: 'Movimentação não encontrada' });
 
+  // Audit trail
+  db.prepare('INSERT INTO movement_audit (movement_id, action, old_data, changed_by) VALUES (?, ?, ?, ?)')
+    .run(id, 'deleted', JSON.stringify(existing), req.user.id);
+
   db.prepare('DELETE FROM movements WHERE id = ?').run(id);
   res.json({ success: true, message: 'Movimentação excluída com sucesso' });
+});
+
+// GET /api/movements/:id/audit - audit history for a movement
+router.get('/:id/audit', (req, res) => {
+  const { id } = req.params;
+  const audits = db.prepare(`
+    SELECT a.*, u.name as changed_by_name
+    FROM movement_audit a
+    LEFT JOIN users u ON a.changed_by = u.id
+    WHERE a.movement_id = ?
+    ORDER BY a.changed_at DESC
+  `).all(id);
+  res.json({ success: true, data: audits });
+});
+
+// GET /api/movements/counterparts - autocomplete for counterparts
+router.get('/counterparts/list', (req, res) => {
+  const counterparts = db.prepare(`
+    SELECT DISTINCT counterpart FROM movements ORDER BY counterpart
+  `).all();
+  res.json({ success: true, data: counterparts.map(c => c.counterpart) });
+});
+
+// GET /api/movements/export - export all filtered movements as CSV
+router.get('/export/csv', (req, res) => {
+  const { movement_type, pallet_type, start_date, end_date, search } = req.query;
+  const conditions = [];
+  const params = [];
+
+  if (movement_type && ['entry', 'exit'].includes(movement_type)) {
+    conditions.push('movement_type = ?'); params.push(movement_type);
+  }
+  if (pallet_type && ['CHEP', 'fumegado', 'PBR'].includes(pallet_type)) {
+    conditions.push('pallet_type = ?'); params.push(pallet_type);
+  }
+  if (start_date) { conditions.push('movement_date >= ?'); params.push(start_date); }
+  if (end_date) { conditions.push('movement_date <= ?'); params.push(end_date); }
+  if (search) { conditions.push('counterpart LIKE ?'); params.push(`%${search}%`); }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const movements = db.prepare(`
+    SELECT m.*, u.name as created_by_name
+    FROM movements m LEFT JOIN users u ON m.created_by = u.id
+    ${where} ORDER BY m.movement_date DESC, m.created_at DESC
+  `).all(...params);
+
+  const BOM = '\uFEFF';
+  const header = 'ID;Data;Tipo;Pallet;Quantidade;Preço Unit.;Frete;Total;Parceiro;Observações;Criado por;Criado em';
+  const rows = movements.map(m => {
+    const total = (m.quantity * m.unit_price).toFixed(2);
+    const tipo = m.movement_type === 'entry' ? 'Entrada' : 'Saída';
+    const notes = (m.notes || '').replace(/;/g, ',').replace(/\n/g, ' ');
+    const counterpart = (m.counterpart || '').replace(/;/g, ',');
+    return `${m.id};${m.movement_date};${tipo};${m.pallet_type};${m.quantity};${(m.unit_price || 0).toFixed(2)};${(m.freight_value || 0).toFixed(2)};${total};${counterpart};${notes};${m.created_by_name || ''};${m.created_at || ''}`;
+  });
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename=movimentacoes.csv');
+  res.send(BOM + header + '\n' + rows.join('\n'));
 });
 
 module.exports = router;

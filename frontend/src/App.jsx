@@ -8,6 +8,7 @@ import Movements from './pages/Movements';
 import Stock from './pages/Stock';
 import Financial from './pages/Financial';
 import Freight from './pages/Freight';
+import Users from './pages/Users';
 import UpdateModal from './components/UpdateModal';
 import { isNative } from './services/api';
 
@@ -35,8 +36,10 @@ function PublicRoute({ children }) {
 export default function App() {
   const [updateInfo, setUpdateInfo] = useState(null);
 
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI?.isElectron;
+
   useEffect(() => {
-    if (!isNative) return;
+    if (!isNative && !isElectron) return;
     // Check for updates after a short delay so the app loads first
     const timer = setTimeout(async () => {
       try {
@@ -62,6 +65,7 @@ export default function App() {
             <Route path="estoque" element={<Stock />} />
             <Route path="financeiro" element={<Financial />} />
             <Route path="frete" element={<Freight />} />
+            <Route path="usuarios" element={<Users />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

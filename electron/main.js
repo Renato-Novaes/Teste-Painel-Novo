@@ -1,6 +1,9 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
+const http = require('http');
+const os = require('os');
 
 // ── Environment setup (before requiring backend) ──────────────────────
 const isPacked = app.isPackaged;
@@ -78,4 +81,110 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (mainWindow === null) createWindow();
+});
+
+// ── Auto-update via GitHub Releases (Windows) ────────────────────────
+const GITHUB_REPO = 'Renato-Novaes/Teste-Painel-Novo';
+const CURRENT_VERSION = require('../package.json').version;
+
+function isNewer(remote, local) {
+  const r = remote.replace(/^v/, '').split('.').map(Number);
+  const l = local.replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((r[i] || 0) > (l[i] || 0)) return true;
+    if ((r[i] || 0) < (l[i] || 0)) return false;
+  }
+  return false;
+}
+
+function httpsGet(url) {
+  return new Promise((resolve, reject) => {
+    const doRequest = (reqUrl) => {
+      https.get(reqUrl, { headers: { 'User-Agent': 'PalletControl', Accept: 'application/vnd.github.v3+json' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return doRequest(res.headers.location);
+        }
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve({ status: res.statusCode, data }));
+      }).on('error', reject);
+    };
+    doRequest(url);
+  });
+}
+
+ipcMain.handle('update:check', async () => {
+  try {
+    const res = await httpsGet(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`);
+    if (res.status !== 200) return null;
+    const release = JSON.parse(res.data);
+    const latestVersion = release.tag_name.replace(/^v/, '');
+    if (!isNewer(latestVersion, CURRENT_VERSION)) return null;
+
+    // Look for .exe or Windows .zip asset
+    const asset = release.assets.find(a => a.name.endsWith('.exe')) ||
+                  release.assets.find(a => a.name.toLowerCase().includes('windows') && a.name.endsWith('.zip'));
+    if (!asset) return null;
+
+    return {
+      version: latestVersion,
+      currentVersion: CURRENT_VERSION,
+      notes: release.body,
+      downloadUrl: asset.browser_download_url,
+      size: asset.size,
+      fileName: asset.name,
+    };
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('update:download', async (_event, downloadUrl, fileName) => {
+  const tmpDir = path.join(os.tmpdir(), 'palletcontrol-update');
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const filePath = path.join(tmpDir, fileName);
+
+  return new Promise((resolve, reject) => {
+    const doDownload = (url) => {
+      const proto = url.startsWith('https') ? https : http;
+      proto.get(url, { headers: { 'User-Agent': 'PalletControl' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          return doDownload(res.headers.location);
+        }
+        if (res.statusCode !== 200) {
+          return reject(new Error(`Download failed: HTTP ${res.statusCode}`));
+        }
+        const total = parseInt(res.headers['content-length'], 10) || 0;
+        let downloaded = 0;
+        const file = fs.createWriteStream(filePath);
+
+        res.on('data', (chunk) => {
+          downloaded += chunk.length;
+          file.write(chunk);
+          if (total > 0 && mainWindow) {
+            mainWindow.webContents.send('update:progress', Math.round((downloaded / total) * 100));
+          }
+        });
+
+        res.on('end', () => {
+          file.end(() => resolve(filePath));
+        });
+
+        res.on('error', (err) => {
+          file.close();
+          fs.unlinkSync(filePath);
+          reject(err);
+        });
+      }).on('error', reject);
+    };
+    doDownload(downloadUrl);
+  });
+});
+
+ipcMain.handle('update:install', async (_event, installerPath) => {
+  const { spawn } = require('child_process');
+  // Launch installer and quit app
+  spawn(installerPath, { detached: true, stdio: 'ignore' }).unref();
+  setTimeout(() => app.quit(), 500);
+  return true;
 });

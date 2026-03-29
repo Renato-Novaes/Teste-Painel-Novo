@@ -1,6 +1,6 @@
 {
   "name": "pallet-control-system",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Sistema de Controle de Estoque de Pallets",
   "main": "electron/main.js",
   "scripts": {
@@ -9,10 +9,9 @@
     "start": "concurrently \"cd backend && npm start\" \"cd frontend && npm run preview\"",
     "build:frontend": "cd frontend && npm run build",
     "electron:dev": "npm run build:frontend && electron .",
-    "electron:build": "npm run build:frontend && electron-builder --linux",
+    "electron:build": "npm run build:frontend && electron-builder --win",
     "electron:build:win": "npm run build:frontend && electron-builder --win",
-    "electron:build:mac": "npm run build:frontend && electron-builder --mac",
-    "electron:build:all": "npm run build:frontend && electron-builder --linux --win"
+    "electron:build:mac": "npm run build:frontend && electron-builder --mac"
   },
   "build": {
     "appId": "com.palletcontrol.app",
@@ -33,11 +32,6 @@
         "to": "frontend/dist"
       }
     ],
-    "linux": {
-      "target": ["AppImage", "deb"],
-      "category": "Office",
-      "icon": "electron/icons"
-    },
     "win": {
       "target": ["nsis"],
       "icon": "electron/icons/icon.ico"
