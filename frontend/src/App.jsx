@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
@@ -7,6 +8,8 @@ import Movements from './pages/Movements';
 import Stock from './pages/Stock';
 import Financial from './pages/Financial';
 import Freight from './pages/Freight';
+import UpdateModal from './components/UpdateModal';
+import { isNative } from './services/api';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -30,9 +33,27 @@ function PublicRoute({ children }) {
 }
 
 export default function App() {
+  const [updateInfo, setUpdateInfo] = useState(null);
+
+  useEffect(() => {
+    if (!isNative) return;
+    // Check for updates after a short delay so the app loads first
+    const timer = setTimeout(async () => {
+      try {
+        const { checkForUpdate } = await import('./services/updateService');
+        const info = await checkForUpdate();
+        if (info) setUpdateInfo(info);
+      } catch { /* silent */ }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthProvider>
+        {updateInfo && (
+          <UpdateModal updateInfo={updateInfo} onDismiss={() => setUpdateInfo(null)} />
+        )}
         <Routes>
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
