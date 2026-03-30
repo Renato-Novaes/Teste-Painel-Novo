@@ -2,20 +2,78 @@ name: Build & Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
 
 permissions:
   contents: write
 
 jobs:
   # ────────────────────────────────────────────────────
-  # Windows .exe (Electron)
+  # 1. Auto-bump version, tag & create release
+  # ────────────────────────────────────────────────────
+  prepare:
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version & create tag
+        id: bump
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          IFS='.' read -r major minor patch <<< "$CURRENT"
+          NEW_VERSION="${major}.${minor}.$((patch + 1))"
+
+          # Update root package.json
+          npm version "$NEW_VERSION" --no-git-tag-version
+
+          # Update Android versionCode & versionName
+          CURRENT_CODE=$(grep -oP 'versionCode \K\d+' frontend/android/app/build.gradle)
+          NEW_CODE=$((CURRENT_CODE + 1))
+          sed -i "s/versionCode $CURRENT_CODE/versionCode $NEW_CODE/" frontend/android/app/build.gradle
+          sed -i "s/versionName \"$CURRENT\"/versionName \"$NEW_VERSION\"/" frontend/android/app/build.gradle
+
+          git add -A
+          git commit -m "chore: bump version to v${NEW_VERSION} [skip ci]"
+          git tag "v${NEW_VERSION}"
+          git push origin main --follow-tags
+
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: v${{ steps.bump.outputs.version }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ────────────────────────────────────────────────────
+  # 2. Windows .exe (Electron)
   # ────────────────────────────────────────────────────
   build-windows:
+    needs: prepare
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -41,17 +99,21 @@ jobs:
       - name: Upload .exe to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
           files: release/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ────────────────────────────────────────────────────
-  # Android .apk (Capacitor)
+  # 3. Android .apk (Capacitor)
   # ────────────────────────────────────────────────────
   build-android:
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - uses: actions/setup-node@v4
         with:
@@ -82,13 +144,14 @@ jobs:
 
       - name: Rename APK
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${{ needs.prepare.outputs.version }}
           cp frontend/android/app/build/outputs/apk/release/app-release-unsigned.apk \
              PalletControl-${VERSION}.apk
 
       - name: Upload .apk to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
           files: PalletControl-*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
