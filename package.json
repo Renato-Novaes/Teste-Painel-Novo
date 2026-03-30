@@ -1,6 +1,6 @@
 {
   "name": "pallet-control-system",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Sistema de Controle de Estoque de Pallets",
   "main": "electron/main.js",
   "scripts": {
