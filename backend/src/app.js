@@ -25,6 +25,7 @@ app.use('/api/movements', require('./routes/movements'));
 app.use('/api/stock', require('./routes/stock'));
 app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/financial', require('./routes/financial'));
+app.use('/api/daily-stock', require('./routes/dailyStock'));
 
 // Health check
 app.get('/api/health', (req, res) => {

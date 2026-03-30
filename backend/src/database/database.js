@@ -57,6 +57,24 @@ db.exec(`
     warning_stock INTEGER NOT NULL DEFAULT 100
   );
 
+  CREATE TABLE IF NOT EXISTS daily_stock (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_date DATE NOT NULL,
+    chep INTEGER NOT NULL DEFAULT 0,
+    pbr INTEGER NOT NULL DEFAULT 0,
+    fumegado INTEGER NOT NULL DEFAULT 0,
+    quebrado INTEGER NOT NULL DEFAULT 0,
+    para_triar INTEGER NOT NULL DEFAULT 0,
+    pbr_triados INTEGER NOT NULL DEFAULT 0,
+    pbr_para_triar INTEGER NOT NULL DEFAULT 0,
+    fumegado_triados INTEGER NOT NULL DEFAULT 0,
+    fumegado_para_triar INTEGER NOT NULL DEFAULT 0,
+    updated_by INTEGER REFERENCES users(id),
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stock_date)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_daily_stock_date ON daily_stock(stock_date);
   CREATE INDEX IF NOT EXISTS idx_movements_date ON movements(movement_date);
   CREATE INDEX IF NOT EXISTS idx_movements_type ON movements(movement_type);
   CREATE INDEX IF NOT EXISTS idx_movements_pallet ON movements(pallet_type);

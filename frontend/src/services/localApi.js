@@ -239,6 +239,59 @@ async function financialFreight(params) {
   return ok({ period: { start: startStr, end: endStr }, summary: { total_freight: f2(s?.total_freight), entry_freight: f2(s?.entry_freight), exit_freight: f2(s?.exit_freight), movements_with_freight: s?.movements_with_freight||0, avg_freight: f2(s?.avg_freight) }, byType, byMovementType, topCounterparts, dailyChart });
 }
 
+// ── Daily Stock ───────────────────────────────────────────────────────
+
+async function getDailyStock(params) {
+  const date = params.date || todayStr();
+  await run(`CREATE TABLE IF NOT EXISTS daily_stock (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_date DATE NOT NULL,
+    chep INTEGER NOT NULL DEFAULT 0,
+    pbr INTEGER NOT NULL DEFAULT 0,
+    fumegado INTEGER NOT NULL DEFAULT 0,
+    quebrado INTEGER NOT NULL DEFAULT 0,
+    para_triar INTEGER NOT NULL DEFAULT 0,
+    pbr_triados INTEGER NOT NULL DEFAULT 0,
+    pbr_para_triar INTEGER NOT NULL DEFAULT 0,
+    fumegado_triados INTEGER NOT NULL DEFAULT 0,
+    fumegado_para_triar INTEGER NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stock_date)
+  )`);
+  const row = await getOne('SELECT * FROM daily_stock WHERE stock_date = ?', [date]);
+  const data = row ? {
+    stock_date: row.stock_date,
+    CHEP: row.chep, PBR: row.pbr, fumegado: row.fumegado,
+    quebrado: row.quebrado, paraTriar: row.para_triar,
+    pbrTriados: row.pbr_triados, pbrParaTriar: row.pbr_para_triar,
+    fumegadoTriados: row.fumegado_triados, fumegadoParaTriar: row.fumegado_para_triar,
+  } : null;
+  return ok(data);
+}
+
+async function saveDailyStock(data) {
+  const { stock_date, CHEP=0, PBR=0, fumegado=0, quebrado=0, paraTriar=0, pbrTriados=0, pbrParaTriar=0, fumegadoTriados=0, fumegadoParaTriar=0 } = data;
+  const date = stock_date || todayStr();
+  await run(`CREATE TABLE IF NOT EXISTS daily_stock (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_date DATE NOT NULL,
+    chep INTEGER NOT NULL DEFAULT 0,
+    pbr INTEGER NOT NULL DEFAULT 0,
+    fumegado INTEGER NOT NULL DEFAULT 0,
+    quebrado INTEGER NOT NULL DEFAULT 0,
+    para_triar INTEGER NOT NULL DEFAULT 0,
+    pbr_triados INTEGER NOT NULL DEFAULT 0,
+    pbr_para_triar INTEGER NOT NULL DEFAULT 0,
+    fumegado_triados INTEGER NOT NULL DEFAULT 0,
+    fumegado_para_triar INTEGER NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(stock_date)
+  )`);
+  await run(`INSERT INTO daily_stock (stock_date, chep, pbr, fumegado, quebrado, para_triar, pbr_triados, pbr_para_triar, fumegado_triados, fumegado_para_triar) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(stock_date) DO UPDATE SET chep=excluded.chep, pbr=excluded.pbr, fumegado=excluded.fumegado, quebrado=excluded.quebrado, para_triar=excluded.para_triar, pbr_triados=excluded.pbr_triados, pbr_para_triar=excluded.pbr_para_triar, fumegado_triados=excluded.fumegado_triados, fumegado_para_triar=excluded.fumegado_para_triar, updated_at=CURRENT_TIMESTAMP`,
+    [date, parseInt(CHEP)||0, parseInt(PBR)||0, parseInt(fumegado)||0, parseInt(quebrado)||0, parseInt(paraTriar)||0, parseInt(pbrTriados)||0, parseInt(pbrParaTriar)||0, parseInt(fumegadoTriados)||0, parseInt(fumegadoParaTriar)||0]);
+  return okMsg(data, 'Contagem diária salva');
+}
+
 // ── Router ────────────────────────────────────────────────────────────
 
 /**
@@ -257,12 +310,18 @@ export const localApi = {
     if (url === '/api/stock/chart') return getStockChart(params);
     if (url === '/api/financial/summary') return financialSummary(params);
     if (url === '/api/financial/freight') return financialFreight(params);
+    if (url === '/api/daily-stock') return getDailyStock(params);
     err('Rota não encontrada', 404);
   },
   async post(url, data = {}) {
     if (url === '/api/auth/login') return authLogin(data);
     if (url === '/api/movements') return createMovement(data);
     err('Rota não encontrada', 404);
+  },
+  async put(url, data = {}) {
+    const m = url.match(/^\/api\/movements\/(\d+)$/);
+    if (m) return updateMovement(parseInt(m[1]), data);
+    if (url === '/api/daily-stock') return saveDailyStock(data);
   },
   async put(url, data = {}) {
     const m = url.match(/^\/api\/movements\/(\d+)$/);

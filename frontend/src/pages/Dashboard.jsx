@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
+  LineChart, Line, BarChart, Bar, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import {
   Package, TrendingUp, TrendingDown, DollarSign,
   Truck, ArrowUpCircle, ArrowDownCircle, RefreshCw,
-  Plus, ArrowRight, BarChart3, Layers, Clock, Sparkles
+  Plus, ArrowRight, BarChart3, Layers, Clock, Sparkles, Save
 } from 'lucide-react';
 import api from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -61,7 +61,17 @@ function fmtDate(dateStr) {
 }
 
 const PALLET_COLORS = { CHEP: '#3b82f6', fumegado: '#f59e0b', PBR: '#8b5cf6' };
-const PIE_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6'];
+const DAILY_STOCK_DEFAULT = {
+  CHEP: '',
+  PBR: '',
+  fumegado: '',
+  quebrado: '',
+  paraTriar: '',
+  pbrTriados: '',
+  pbrParaTriar: '',
+  fumegadoTriados: '',
+  fumegadoParaTriar: '',
+};
 
 function EmptyState({ icon: Icon, title, description, actionLabel, onAction }) {
   return (
@@ -86,6 +96,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [dailyStock, setDailyStock] = useState(DAILY_STOCK_DEFAULT);
+  const [dailySaving, setDailySaving] = useState(false);
+  const [dailySaved, setDailySaved] = useState(false);
+  const saveTimerRef = { current: null };
 
   async function fetchData() {
     try {
@@ -96,7 +110,48 @@ export default function Dashboard() {
     } finally { setLoading(false); setRefreshing(false); }
   }
   useEffect(() => { fetchData(); }, []);
-  async function handleRefresh() { setRefreshing(true); await fetchData(); }
+  async function handleRefresh() { setRefreshing(true); await fetchData(); loadDailyStock(); }
+
+  async function loadDailyStock() {
+    try {
+      const res = await api.get('/api/daily-stock');
+      if (res.data.data) {
+        setDailyStock({
+          CHEP: String(res.data.data.CHEP ?? ''),
+          PBR: String(res.data.data.PBR ?? ''),
+          fumegado: String(res.data.data.fumegado ?? ''),
+          quebrado: String(res.data.data.quebrado ?? ''),
+          paraTriar: String(res.data.data.paraTriar ?? ''),
+          pbrTriados: String(res.data.data.pbrTriados ?? ''),
+          pbrParaTriar: String(res.data.data.pbrParaTriar ?? ''),
+          fumegadoTriados: String(res.data.data.fumegadoTriados ?? ''),
+          fumegadoParaTriar: String(res.data.data.fumegadoParaTriar ?? ''),
+        });
+      }
+    } catch { /* silencioso */ }
+  }
+
+  useEffect(() => { loadDailyStock(); }, []);
+
+  function saveDailyStock(updated) {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        setDailySaving(true);
+        await api.put('/api/daily-stock', updated);
+        setDailySaved(true);
+        setTimeout(() => setDailySaved(false), 2000);
+      } catch { /* silencioso */ }
+      finally { setDailySaving(false); }
+    }, 800);
+  }
+
+  function handleDailyStockChange(field, value) {
+    const sanitized = value.replace(/\D/g, '');
+    const updated = { ...dailyStock, [field]: sanitized };
+    setDailyStock(updated);
+    saveDailyStock(updated);
+  }
 
   if (loading) {
     return (
@@ -134,11 +189,9 @@ export default function Dashboard() {
   const hasMovements = recentMovements && recentMovements.length > 0;
   const hasChartData = movementsChart?.some(d => d.entries > 0 || d.exits > 0);
   const greeting = (() => { const h = new Date().getHours(); if (h < 12) return 'Bom dia'; if (h < 18) return 'Boa tarde'; return 'Boa noite'; })();
-  const pieData = [
-    { name: 'CHEP', value: stock.CHEP || 0 },
-    { name: 'FUMEGADO', value: stock.fumegado || 0 },
-    { name: 'PBR', value: stock.PBR || 0 },
-  ].filter(d => d.value > 0);
+  const dailyTotal = ['CHEP', 'PBR', 'fumegado', 'quebrado', 'paraTriar']
+    .reduce((sum, key) => sum + (parseInt(dailyStock[key], 10) || 0), 0);
+  const triadosTotal = (parseInt(dailyStock.pbrTriados, 10) || 0) + (parseInt(dailyStock.fumegadoTriados, 10) || 0);
 
   return (
     <div className="space-y-6">
@@ -192,49 +245,90 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stock cards */}
+      {/* Daily stock cards */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Layers size={15} className="text-slate-500" />
-            <h3 className="text-sm font-semibold text-slate-300">Estoque por Tipo</h3>
+            <h3 className="text-sm font-semibold text-slate-300">Estoque Diario</h3>
           </div>
-          <button onClick={() => navigate('/estoque')} className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">Ver detalhes <ArrowRight size={12} /></button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="md:col-span-2 grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <StatCard title="CHEP" value={fmtNum(stock.CHEP)} subtitle="pallets" icon={Package} color="blue" glow />
-            <StatCard title="FUMEGADO" value={fmtNum(stock.fumegado)} subtitle="pallets" icon={Package} color="amber" glow />
-            <StatCard title="PBR" value={fmtNum(stock.PBR)} subtitle="pallets" icon={Package} color="purple" glow />
-            <StatCard title="Total" value={fmtNum(stock.total)} subtitle="todos os tipos" icon={Layers} color="slate" glow />
-          </div>
-          <div className="bg-slate-800/60 rounded-2xl border border-slate-700/40 p-4 flex items-center justify-center backdrop-blur-sm">
-            {pieData.length > 0 ? (
-              <div className="flex items-center gap-4 w-full">
-                <ResponsiveContainer width={100} height={100}>
-                  <PieChart><Pie data={pieData} cx="50%" cy="50%" innerRadius={28} outerRadius={44} paddingAngle={3} dataKey="value" stroke="none">
-                    {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie></PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 flex-1">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Distribuição</p>
-                  {pieData.map((d, i) => (
-                    <div key={d.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i] }} />
-                        <span className="text-xs text-slate-400">{d.name}</span>
-                      </div>
-                      <span className="text-xs font-bold text-slate-300">{stock.total > 0 ? Math.round((d.value / stock.total) * 100) : 0}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-4">
-                <Package size={24} className="text-slate-600 mx-auto mb-2" />
-                <p className="text-xs text-slate-500">Sem estoque</p>
-              </div>
+          <div className="flex items-center gap-3">
+            {dailySaving && (
+              <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                Salvando...
+              </span>
             )}
+            {dailySaved && !dailySaving && (
+              <span className="text-[11px] text-emerald-400 flex items-center gap-1">
+                <Save size={12} /> Salvo
+              </span>
+            )}
+            <button onClick={() => navigate('/estoque')} className="text-xs text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1">Ver detalhes <ArrowRight size={12} /></button>
+          </div>
+        </div>
+        <div className="bg-slate-800/55 border border-slate-700/40 rounded-2xl p-4 sm:p-5 backdrop-blur-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
+            {[
+              { key: 'CHEP', label: 'Pallets CHEP', accent: 'text-blue-400', ring: 'border-blue-500/20' },
+              { key: 'PBR', label: 'Pallets PBR', accent: 'text-purple-400', ring: 'border-purple-500/20' },
+              { key: 'fumegado', label: 'Pallets Fumigado', accent: 'text-amber-400', ring: 'border-amber-500/20' },
+              { key: 'quebrado', label: 'Pallets Quebrado', accent: 'text-red-400', ring: 'border-red-500/20' },
+              { key: 'paraTriar', label: 'Pallets Para Triar', accent: 'text-cyan-400', ring: 'border-cyan-500/20' },
+            ].map((card) => (
+              <div key={card.key} className={`rounded-xl border ${card.ring} bg-slate-900/45 p-3 space-y-2`}>
+                <p className={`text-xs font-semibold uppercase tracking-wider ${card.accent}`}>{card.label}</p>
+                <label className="block text-[10px] text-slate-500 uppercase tracking-wider">Contagem diaria</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={dailyStock[card.key]}
+                  onChange={(e) => handleDailyStockChange(card.key, e.target.value)}
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 text-slate-100 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                  placeholder="0"
+                />
+                {(card.key === 'PBR' || card.key === 'fumegado') && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Triados</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={card.key === 'PBR' ? dailyStock.pbrTriados : dailyStock.fumegadoTriados}
+                        onChange={(e) => handleDailyStockChange(card.key === 'PBR' ? 'pbrTriados' : 'fumegadoTriados', e.target.value)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 text-slate-100 px-2.5 py-2 text-sm outline-none focus:border-emerald-500"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1">Para triar</label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={card.key === 'PBR' ? dailyStock.pbrParaTriar : dailyStock.fumegadoParaTriar}
+                        onChange={(e) => handleDailyStockChange(card.key === 'PBR' ? 'pbrParaTriar' : 'fumegadoParaTriar', e.target.value)}
+                        className="w-full rounded-lg border border-slate-700 bg-slate-800 text-slate-100 px-2.5 py-2 text-sm outline-none focus:border-cyan-500"
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-slate-700 bg-slate-900/40 p-3">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wider">Total da contagem diaria</p>
+              <p className="text-xl font-extrabold text-slate-100 mt-1">{fmtNum(dailyTotal)}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3">
+              <p className="text-[11px] text-emerald-400 uppercase tracking-wider">Pallets triados</p>
+              <p className="text-xl font-extrabold text-emerald-300 mt-1">{fmtNum(triadosTotal)}</p>
+            </div>
+            <div className="rounded-xl border border-blue-500/20 bg-blue-500/10 p-3">
+              <p className="text-[11px] text-blue-400 uppercase tracking-wider">Estoque oficial (sistema)</p>
+              <p className="text-xl font-extrabold text-blue-300 mt-1">{fmtNum(stock.total)}</p>
+            </div>
           </div>
         </div>
       </div>
