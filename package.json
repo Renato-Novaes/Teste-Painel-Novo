@@ -1,6 +1,6 @@
 {
   "name": "pallet-control-system",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Sistema de Controle de Estoque de Pallets",
   "main": "electron/main.js",
   "scripts": {
@@ -33,11 +33,15 @@
       }
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "electron/icons/icon.ico"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "electron/icons/icon.icns"
     },
     "nsis": {

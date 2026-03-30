@@ -89,6 +89,49 @@ function downloadAndInstallCapacitor(downloadUrl, onProgress) {
       const { registerPlugin } = await import('@capacitor/core');
       const ApkInstaller = registerPlugin('ApkInstaller');
 
+      // Prefer native download to avoid WebView/XHR restrictions with GitHub asset redirects.
+      if (typeof Filesystem.downloadFile === 'function') {
+        let progressListener;
+        try {
+          if (onProgress) {
+            progressListener = await Filesystem.addListener('progress', (event) => {
+              if (event?.contentLength > 0) {
+                onProgress(Math.round((event.bytes / event.contentLength) * 100));
+              }
+            });
+          }
+
+          await Filesystem.downloadFile({
+            path: 'update.apk',
+            directory: Directory.Cache,
+            url: downloadUrl,
+            progress: true,
+            recursive: true,
+          });
+
+          onProgress?.(100);
+
+          const { uri } = await Filesystem.getUri({
+            path: 'update.apk',
+            directory: Directory.Cache,
+          });
+
+          const nativePath = uri.replace('file://', '');
+          await ApkInstaller.install({ path: nativePath });
+          resolve();
+          return;
+        } catch (e) {
+          reject(e);
+          return;
+        } finally {
+          try {
+            await progressListener?.remove?.();
+          } catch {
+            // Ignore listener cleanup errors
+          }
+        }
+      }
+
       const xhr = new XMLHttpRequest();
       xhr.open('GET', downloadUrl, true);
       xhr.responseType = 'blob';
@@ -128,7 +171,7 @@ function downloadAndInstallCapacitor(downloadUrl, onProgress) {
         }
       };
 
-      xhr.onerror = () => reject(new Error('Download failed — check your connection'));
+      xhr.onerror = () => reject(new Error('Falha no download. Verifique sua conexao e tente novamente.'));
       xhr.send();
     } catch (e) {
       reject(e);
